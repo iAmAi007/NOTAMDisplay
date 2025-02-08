@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Auto-Scroller</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      background-color: black;
+    }
+
+    #pdf-viewer {
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 0;
+      transition: transform 10s linear; /* Smooth scrolling effect */
+    }
+
+    #pdf-viewer canvas {
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      margin-bottom: 20px; /* Space between pages */
+    }
+
+    #file-input {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <input type="file" id="file-input" accept="application/pdf" />
+  <div id="pdf-viewer"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    const SCROLL_RATE = 50; // Pixels per second (adjust for speed)
+    let pdfDoc = null;
+    let isFullscreen = false;
+    let scrollInterval = null;
+    let userInteracted = false;
+    let lastUserInteractionTime = 0;
+    const INACTIVITY_TIMEOUT = 3000; // 3 seconds
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    document.getElementById('file-input').addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (file && file.type === 'application/pdf') {
+        const fileReader = new FileReader();
+        fileReader.onload = function () {
+          const pdfData = new Uint8Array(this.result);
+          loadPDF(pdfData).then(() => {
+            enterFullscreen();
+            startAutoScroll();
+          });
+        };
+        fileReader.readAsArrayBuffer(file);
+      }
+    });
+
+    function loadPDF(data) {
+      return pdfjsLib.getDocument(data).promise.then((pdf) => {
+        pdfDoc = pdf;
+        renderAllPages();
+        return pdf;
+      });
+    }
+
+    async function renderAllPages() {
+      const viewer = document.getElementById('pdf-viewer');
+      viewer.innerHTML = ''; // Clear previous content
+
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const pageWidth = page.getViewport({ scale: 1 }).width;
+        const scale = (window.innerWidth / pageWidth) * window.devicePixelRatio;
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.width = `${viewport.width / window.devicePixelRatio}px`;
+        canvas.style.height = `${viewport.height / window.devicePixelRatio}px`;
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+        };
+
+        await page.render(renderContext).promise;
+        viewer.appendChild(canvas);
+      }
+    }
+
+    function startAutoScroll() {
+      const viewer = document.getElementById('pdf-viewer');
+      let scrollPosition = 0;
+
+      scrollInterval = setInterval(() => {
+        if (!userInteracted) {
+          scrollPosition += 1; // Adjust scroll speed
+          if (scrollPosition >= viewer.scrollHeight - window.innerHeight) {
+            scrollPosition = 0; // Loop back to the top
+          }
+          viewer.style.transform = `translateY(-${scrollPosition}px)`;
+        }
+      }, SCROLL_RATE);
+    }
+
+    function stopAutoScroll() {
+      if (scrollInterval) {
+        clearInterval(scrollInterval);
+        scrollInterval = null;
+      }
+    }
+
+    function enterFullscreen() {
+      const elem = document.documentElement;
+      if (elem.requestFullscreen && !document.fullscreenElement) {
+        elem.requestFullscreen().catch(err => {
+          console.error('Error attempting to enable fullscreen:', err);
+        });
+      }
+      isFullscreen = true;
+    }
+
+    function exitFullscreen() {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+      isFullscreen = false;
+    }
+
+    function handleUserInteraction() {
+      userInteracted = true;
+      lastUserInteractionTime = Date.now();
+      stopAutoScroll();
+
+      setTimeout(() => {
+        if (Date.now() - lastUserInteractionTime >= INACTIVITY_TIMEOUT) {
+          userInteracted = false;
+          startAutoScroll();
+        }
+      }, INACTIVITY_TIMEOUT);
+    }
+
+    window.addEventListener('resize', () => {
+      if (pdfDoc) {
+        renderAllPages();
+      }
+    });
+
+    document.addEventListener('dblclick', () => {
+      if (isFullscreen) {
+        exitFullscreen();
+      } else {
+        enterFullscreen();
+      }
+    });
+
+    document.addEventListener('wheel', handleUserInteraction);
+    document.addEventListener('touchmove', handleUserInteraction);
+    document.addEventListener('mousedown', handleUserInteraction);
+    document.addEventListener('keydown', handleUserInteraction);
+  </script>
+</body>
+</html>
