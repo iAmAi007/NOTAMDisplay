@@ -42,6 +42,8 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+      opacity: 1;
+      transition: opacity 0.5s ease-in-out;
     }
 
     #manualScroll {
@@ -51,6 +53,13 @@
       transform: translateX(-50%);
       z-index: 1000;
       width: 80%;
+      opacity: 1;
+      transition: opacity 0.5s ease-in-out;
+    }
+
+    #controls.hide, #manualScroll.hide {
+      opacity: 0;
+      pointer-events: none; /* Disable interaction when hidden */
     }
   </style>
 </head>
@@ -72,6 +81,7 @@
     const INACTIVITY_TIMEOUT = 3000; // 3 seconds
     let isAutoScrolling = true;
     let scrollSpeed = 10; // Default speed (pixels per second)
+    let controlsTimeout;
 
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -184,6 +194,38 @@
         }
       }, INACTIVITY_TIMEOUT);
     }
+
+    // Function to hide controls
+    function hideControls() {
+      const controls = document.getElementById('controls');
+      const manualScroll = document.getElementById('manualScroll');
+      controls.classList.add('hide');
+      manualScroll.classList.add('hide');
+    }
+
+    // Function to show controls
+    function showControls() {
+      const controls = document.getElementById('controls');
+      const manualScroll = document.getElementById('manualScroll');
+      controls.classList.remove('hide');
+      manualScroll.classList.remove('hide');
+    }
+
+    // Function to reset the inactivity timer
+    function resetControlsTimeout() {
+      showControls(); // Show controls on interaction
+      clearTimeout(controlsTimeout); // Clear existing timeout
+      controlsTimeout = setTimeout(hideControls, 3000); // Hide controls after 3 seconds of inactivity
+    }
+
+    // Event listeners for user interaction
+    document.addEventListener('mousemove', resetControlsTimeout);
+    document.addEventListener('touchstart', resetControlsTimeout);
+    document.addEventListener('keydown', resetControlsTimeout);
+    document.addEventListener('click', resetControlsTimeout);
+
+    // Initialize the timeout on page load
+    resetControlsTimeout();
 
     // Pause/Play Button
     const pausePlayBtn = document.getElementById('pausePlayBtn');
