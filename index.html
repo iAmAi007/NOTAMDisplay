@@ -19,7 +19,7 @@
       flex-direction: column;
       align-items: center;
       padding: 20px 0;
-      transition: transform 10s linear; /* Smooth scrolling effect */
+      transition: transform 0.1s linear; /* Smooth scrolling effect */
     }
 
     #pdf-viewer canvas {
@@ -33,21 +33,45 @@
       left: 10px;
       z-index: 1000;
     }
+
+    #controls {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    #manualScroll {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      width: 80%;
+    }
   </style>
 </head>
 <body>
-  <input type="file" id="file-input" accept="application/pdf" />
+  <div id="controls">
+    <input type="file" id="file-input" accept="application/pdf" />
+    <button id="pausePlayBtn">Pause</button>
+    <input type="range" id="speedControl" min="0.1" max="100" value="10" step="0.1">
+  </div>
+  <input type="range" id="manualScroll" min="0" max="100" value="0">
   <div id="pdf-viewer"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
-    const SCROLL_RATE = 50; // Pixels per second (adjust for speed)
     let pdfDoc = null;
     let isFullscreen = false;
     let scrollInterval = null;
     let userInteracted = false;
-    let lastUserInteractionTime = 0;
     const INACTIVITY_TIMEOUT = 3000; // 3 seconds
+    let isAutoScrolling = true;
+    let scrollSpeed = 10; // Default speed (pixels per second)
 
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -59,7 +83,7 @@
           const pdfData = new Uint8Array(this.result);
           loadPDF(pdfData).then(() => {
             enterFullscreen();
-            startAutoScroll();
+            startAutoScroll(); // Start auto-scroll after PDF is loaded
           });
         };
         fileReader.readAsArrayBuffer(file);
@@ -102,18 +126,26 @@
     }
 
     function startAutoScroll() {
-      const viewer = document.getElementById('pdf-viewer');
-      let scrollPosition = 0;
+      if (scrollInterval) clearInterval(scrollInterval); // Clear any existing interval
 
       scrollInterval = setInterval(() => {
         if (!userInteracted) {
-          scrollPosition += 1; // Adjust scroll speed
-          if (scrollPosition >= viewer.scrollHeight - window.innerHeight) {
-            scrollPosition = 0; // Loop back to the top
+          const viewer = document.getElementById('pdf-viewer');
+          const scrollPosition = parseInt(viewer.style.transform.replace('translateY(-', '').replace('px)', '')) || 0;
+          const newScrollPosition = scrollPosition + (scrollSpeed / 10); // Adjust scroll speed
+          const maxScroll = viewer.scrollHeight - window.innerHeight;
+
+          if (newScrollPosition >= maxScroll) {
+            viewer.style.transform = 'translateY(0)'; // Loop back to the top
+          } else {
+            viewer.style.transform = `translateY(-${newScrollPosition}px)`;
           }
-          viewer.style.transform = `translateY(-${scrollPosition}px)`;
+
+          // Update manual scroll slider position
+          const scrollPercentage = (newScrollPosition / maxScroll) * 100;
+          manualScroll.value = scrollPercentage;
         }
-      }, SCROLL_RATE);
+      }, 100); // Adjust interval for smoother scrolling
     }
 
     function stopAutoScroll() {
@@ -152,6 +184,38 @@
         }
       }, INACTIVITY_TIMEOUT);
     }
+
+    // Pause/Play Button
+    const pausePlayBtn = document.getElementById('pausePlayBtn');
+    pausePlayBtn.addEventListener('click', () => {
+      isAutoScrolling = !isAutoScrolling;
+      pausePlayBtn.textContent = isAutoScrolling ? 'Pause' : 'Play';
+      if (isAutoScrolling) {
+        startAutoScroll();
+      } else {
+        stopAutoScroll();
+      }
+    });
+
+    // Scroll Speed Control
+    const speedControl = document.getElementById('speedControl');
+    speedControl.addEventListener('input', () => {
+      scrollSpeed = parseFloat(speedControl.value);
+      if (isAutoScrolling) {
+        stopAutoScroll();
+        startAutoScroll();
+      }
+    });
+
+    // Manual Scroll Slider
+    const manualScroll = document.getElementById('manualScroll');
+    manualScroll.addEventListener('input', () => {
+      const viewer = document.getElementById('pdf-viewer');
+      const scrollPercentage = parseFloat(manualScroll.value);
+      const maxScroll = viewer.scrollHeight - window.innerHeight;
+      viewer.style.transform = `translateY(-${maxScroll * (scrollPercentage / 100)}px)`;
+      handleUserInteraction();
+    });
 
     window.addEventListener('resize', () => {
       if (pdfDoc) {
