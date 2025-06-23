@@ -411,6 +411,153 @@
     if (isAndroidTV()) {
       fileSelector.classList.remove('hidden');
     }
+    
+    // Add this code to your existing script section
+
+// Improved function to load PDF from URL with better error handling
+async function loadPDFFromUrl(url) {
+  try {
+    // Check if the URL is valid
+    if (!url) {
+      throw new Error('Please enter a valid URL');
+    }
+
+    // Add https:// if not present (but don't force it for other protocols like http or data URIs)
+    if (!url.match(/^https?:\/\//i) && !url.match(/^data:/i)) {
+      url = 'https://' + url;
+    }
+
+    // Show loading state
+    fileSelector.classList.add('loading');
+    document.getElementById('load-url-btn').textContent = 'Loading...';
+
+    // Set up CORS proxy if needed (uncomment if you need to use a CORS proxy)
+    // const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+    // const loadingTask = pdfjsLib.getDocument(proxyUrl + url);
+
+    const loadingTask = pdfjsLib.getDocument({
+      url: url,
+      withCredentials: false, // Set to true if you need to send cookies
+    });
+
+    // Add progress callback
+    loadingTask.onProgress = function(progress) {
+      console.log(`Loading progress: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
+    };
+
+    const pdf = await loadingTask.promise;
+    pdfDoc = pdf;
+    await renderAllPages();
+    return pdf;
+  } catch (error) {
+    console.error('PDF loading error:', error);
+    
+    // Handle specific error cases
+    let errorMessage = 'Failed to load PDF';
+    if (error.name === 'PasswordException') {
+      errorMessage = 'PDF is password protected';
+    } else if (error.message.includes('Invalid PDF structure')) {
+      errorMessage = 'Invalid PDF file';
+    } else if (error.message.includes('NetworkError')) {
+      errorMessage = 'Network error - check your connection';
+    } else if (error.message.includes('404')) {
+      errorMessage = 'PDF not found at the specified URL';
+    } else {
+      errorMessage = error.message || error.toString();
+    }
+    
+    throw new Error(errorMessage);
+  } finally {
+    // Reset loading state
+    fileSelector.classList.remove('loading');
+    document.getElementById('load-url-btn').textContent = 'Load PDF';
+  }
+}
+
+// Add this CSS to handle loading state
+const style = document.createElement('style');
+style.textContent = `
+  #file-selector.loading {
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  #file-selector.loading button {
+    cursor: not-allowed;
+  }
+`;
+document.head.appendChild(style);
+
+// Add event listener for Enter key in URL input
+urlInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    loadUrlBtn.click();
+  }
+});
+
+// Add URL validation helper
+function isValidUrl(string) {
+  try {
+    new URL(string);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Update the loadUrlBtn click handler to use improved error handling
+loadUrlBtn.addEventListener('click', async () => {
+  const pdfUrl = urlInput.value.trim();
+  if (!pdfUrl) {
+    alert('Please enter a PDF URL');
+    return;
+  }
+
+  try {
+    await loadPDFFromUrl(pdfUrl);
+    enterFullscreen();
+    startAutoScroll();
+    fileSelector.classList.add('hidden');
+  } catch (error) {
+    alert(error.message);
+    console.error('PDF loading failed:', error);
+  }
+});
+
+// Add retry mechanism for failed loads
+let retryCount = 0;
+const MAX_RETRIES = 2;
+
+async function loadWithRetry(url, retries = MAX_RETRIES) {
+  try {
+    return await loadPDFFromUrl(url);
+  } catch (error) {
+    if (retries > 0) {
+      console.log(`Retrying... (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})`);
+      return loadWithRetry(url, retries - 1);
+    }
+    throw error;
+  }
+}
+
+// Update the URL loading to use retry
+loadUrlBtn.addEventListener('click', async () => {
+  const pdfUrl = urlInput.value.trim();
+  if (!pdfUrl) {
+    alert('Please enter a PDF URL');
+    return;
+  }
+
+  try {
+    await loadWithRetry(pdfUrl);
+    enterFullscreen();
+    startAutoScroll();
+    fileSelector.classList.add('hidden');
+  } catch (error) {
+    alert(error.message);
+    console.error('PDF loading failed after retries:', error);
+  }
+});
+    
   </script>
 </body>
 </html>
