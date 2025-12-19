@@ -1,210 +1,416 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NOTAM</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Auto-Scroller</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      background-color: black;
+    }
 
-        body {
-            background: linear-gradient(135deg, #0A0A0B, #1C2526);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
+    #pdf-viewer {
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 0;
+      transition: transform 0.1s linear; /* Smooth scrolling effect */
+    }
 
-        .notam-button {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            color: #FFFFFF;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 20px;
-            padding: 16px 32px;
-            font-size: 1.2rem;
-            font-weight: 500;
-            line-height: 1;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px; /* Optimal gap for icon and text */
-            position: relative;
-            overflow: hidden;
-        }
+    #pdf-viewer canvas {
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      margin-bottom: 20px; /* Space between pages */
+    }
 
-        .notam-button:hover {
-            background: rgba(255, 255, 255, 0.1);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3), 0 0 12px rgba(30, 136, 229, 0.3);
-            transform: translateY(-2px);
-        }
+    #file-input {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
 
-        .notam-button:active {
-            transform: scale(0.98);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        }
+    #controls {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      opacity: 1;
+      transition: opacity 0.5s ease-in-out;
+      background-color: rgba(0,0,0,0.7);
+      padding: 15px;
+      border-radius: 8px;
+    }
 
-        .notam-button:disabled {
-            background: rgba(255, 255, 255, 0.03);
-            cursor: not-allowed;
-            box-shadow: none;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
+    #manualScroll {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      width: 80%;
+      opacity: 1;
+      transition: opacity 0.5s ease-in-out;
+    }
 
-        .notam-button:focus {
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.2);
-        }
+    #controls.hide, #manualScroll.hide {
+      opacity: 0;
+      pointer-events: none; /* Disable interaction when hidden */
+    }
 
-        .click-animation {
-            position: absolute;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.3);
-            transform: scale(0);
-            animation: ripple 0.5s linear;
-            pointer-events: none;
-        }
+    /* TV-specific styles */
+    .tv-button {
+      padding: 12px 20px;
+      font-size: 18px;
+      background-color: #6200ee;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 5px;
+      min-width: 200px;
+    }
 
-        @keyframes ripple {
-            to {
-                transform: scale(4);
-                opacity: 0;
-            }
-        }
+    .tv-button:focus {
+      background-color: #3700b3;
+      outline: 2px solid white;
+    }
 
-        .loading-spinner {
-            width: 18px;
-            height: 18px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-top: 3px solid #FFFFFF;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            display: none;
-        }
+    #url-input {
+      padding: 12px;
+      font-size: 16px;
+      width: 300px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+    #file-selector {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0,0,0,0.9);
+      z-index: 2000;
+    }
 
-        .button-text {
-            transition: opacity 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-        }
+    #file-selector.hidden {
+      display: none;
+    }
 
-        .loading .button-text {
-            opacity: 0;
-        }
-
-        .loading .loading-spinner {
-            display: block;
-        }
-
-        .button-text svg {
-            width: 20px;
-            height: 20px;
-            margin-top: -2px; /* Fine-tune vertical alignment */
-        }
-
-        @media (max-width: 480px) {
-            .notam-button {
-                padding: 12px 24px;
-                font-size: 1rem;
-            }
-        }
-    </style>
+    .remote-friendly {
+      font-size: 24px;
+      padding: 15px;
+    }
+  </style>
 </head>
 <body>
-    <button class="notam-button" id="notam-button" aria-label="View Current NOTAM">
-        <div class="loading-spinner"></div>
-        <span class="button-text">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-            Current NOTAM
-        </span>
-    </button>
+  <div id="file-selector" class="hidden">
+    <h2 class="remote-friendly">Select PDF Source</h2>
+    <button id="local-file-btn" class="tv-button">Select Local File</button>
+    <button id="url-file-btn" class="tv-button">Load from URL</button>
+    <div id="url-input-container" style="display:none; margin-top:20px;">
+      <input type="text" id="url-input" placeholder="Enter PDF URL">
+      <button id="load-url-btn" class="tv-button">Load PDF</button>
+    </div>
+  </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const notamButton = document.getElementById('notam-button');
-            const notamUrl = 'https://tcaa.go.tz/ctrback/docs/RHs6Jb1sdpsV20251003071121.pdf';
+  <div id="controls">
+    <input type="file" id="file-input" accept="application/pdf" />
+    <button id="open-selector-btn" class="tv-button">Open PDF</button>
+    <button id="pausePlayBtn" class="tv-button">Pause</button>
+    <div style="color:white; margin-top:10px;">Scroll Speed:</div>
+    <input type="range" id="speedControl" min="0.1" max="100" value="10" step="0.1" class="remote-friendly">
+  </div>
+  <input type="range" id="manualScroll" min="0" max="100" value="0" class="remote-friendly">
+  <div id="pdf-viewer"></div>
 
-            function createRipple(event) {
-                const button = event.currentTarget;
-                const circle = document.createElement("span");
-                const diameter = Math.max(button.clientWidth, button.clientHeight);
-                const radius = diameter / 2;
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    let pdfDoc = null;
+    let isFullscreen = false;
+    let scrollInterval = null;
+    let userInteracted = false;
+    const INACTIVITY_TIMEOUT = 3000; // 3 seconds
+    let isAutoScrolling = true;
+    let scrollSpeed = 10; // Default speed (pixels per second)
+    let controlsTimeout;
 
-                circle.style.width = circle.style.height = `${diameter}px`;
-                circle.style.left = `${event.clientX - button.getBoundingClientRect().left - radius}px`;
-                circle.style.top = `${event.clientY - button.getBoundingClientRect().top - radius}px`;
-                circle.classList.add("click-animation");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-                button.appendChild(circle);
+    // TV detection
+    const isAndroidTV = () => {
+      return /android.*tv|smart-tv|smarttv|googletv|appletv|hbbtv|pov_tv|netcast.tv|boxee|kylo|roku|\bdtv\b|sonydtv|inettv.browser|viera|nettv|opera tv|xbox|playstation|crkey|cehtml|appletv|tizen|webos|pov_tv|netcast|boxee|kylo|roku|\bdtv\b|sonydtv|inettv.browser|viera|nettv|opera tv|xbox|playstation|crkey|cehtml/i.test(navigator.userAgent.toLowerCase());
+    };
 
-                setTimeout(() => {
-                    circle.remove();
-                }, 500);
-            }
+    // Initialize file selector UI
+    const fileSelector = document.getElementById('file-selector');
+    const localFileBtn = document.getElementById('local-file-btn');
+    const urlFileBtn = document.getElementById('url-file-btn');
+    const urlInputContainer = document.getElementById('url-input-container');
+    const urlInput = document.getElementById('url-input');
+    const loadUrlBtn = document.getElementById('load-url-btn');
+    const openSelectorBtn = document.getElementById('open-selector-btn');
+    const fileInput = document.getElementById('file-input');
 
-            function showLoading() {
-                notamButton.classList.add('loading');
-                notamButton.disabled = true;
-                notamButton.setAttribute('aria-disabled', 'true');
-            }
+    // Show file selector on button click
+    openSelectorBtn.addEventListener('click', () => {
+      fileSelector.classList.remove('hidden');
+    });
 
-            function openNotamDocument(event) {
-                if (event) {
-                    createRipple(event);
-                }
+    // Local file selection
+    localFileBtn.addEventListener('click', () => {
+      if (isAndroidTV()) {
+        // On TV, we need to trigger the hidden file input
+        fileInput.click();
+      } else {
+        // On other devices, use standard file input
+        fileInput.click();
+      }
+      fileSelector.classList.add('hidden');
+    });
 
-                showLoading();
+    // URL file selection
+    urlFileBtn.addEventListener('click', () => {
+      urlInputContainer.style.display = 'block';
+    });
 
-                setTimeout(() => {
-                    window.location.href = notamUrl;
-                }, 800);
-            }
-
-            notamButton.addEventListener('click', openNotamDocument);
-
-            notamButton.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    const rect = notamButton.getBoundingClientRect();
-                    const fakeEvent = {
-                        currentTarget: notamButton,
-                        clientX: rect.left + rect.width / 2,
-                        clientY: rect.top + rect.height / 2
-                    };
-                    openNotamDocument(fakeEvent);
-                }
-            });
-
-            setTimeout(() => {
-                const rect = notamButton.getBoundingClientRect();
-                const fakeEvent = {
-                    currentTarget: notamButton,
-                    clientX: rect.left + rect.width / 2,
-                    clientY: rect.top + rect.height / 2
-                };
-                openNotamDocument(fakeEvent);
-            }, 2000);
+    // Load PDF from URL
+    loadUrlBtn.addEventListener('click', () => {
+      const pdfUrl = urlInput.value.trim();
+      if (pdfUrl) {
+        loadPDFFromUrl(pdfUrl).then(() => {
+          enterFullscreen();
+          startAutoScroll();
+          fileSelector.classList.add('hidden');
+        }).catch(error => {
+          alert('Failed to load PDF: ' + error.message);
         });
-    </script>
+      }
+    });
+
+    // Standard file input handling
+    fileInput.addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (file && file.type === 'application/pdf') {
+        const fileReader = new FileReader();
+        fileReader.onload = function () {
+          const pdfData = new Uint8Array(this.result);
+          loadPDF(pdfData).then(() => {
+            enterFullscreen();
+            startAutoScroll(); // Start auto-scroll after PDF is loaded
+            fileSelector.classList.add('hidden');
+          });
+        };
+        fileReader.readAsArrayBuffer(file);
+      }
+    });
+
+    // Function to load PDF from URL
+    function loadPDFFromUrl(url) {
+      return pdfjsLib.getDocument(url).promise.then((pdf) => {
+        pdfDoc = pdf;
+        renderAllPages();
+        return pdf;
+      });
+    }
+
+    function loadPDF(data) {
+      return pdfjsLib.getDocument(data).promise.then((pdf) => {
+        pdfDoc = pdf;
+        renderAllPages();
+        return pdf;
+      });
+    }
+
+    async function renderAllPages() {
+      const viewer = document.getElementById('pdf-viewer');
+      viewer.innerHTML = ''; // Clear previous content
+
+      for (let i = 1; i <= pdfDoc.numPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const pageWidth = page.getViewport({ scale: 1 }).width;
+        const scale = (window.innerWidth / pageWidth) * window.devicePixelRatio;
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.width = `${viewport.width / window.devicePixelRatio}px`;
+        canvas.style.height = `${viewport.height / window.devicePixelRatio}px`;
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+        };
+
+        await page.render(renderContext).promise;
+        viewer.appendChild(canvas);
+      }
+    }
+
+    function startAutoScroll() {
+      if (scrollInterval) clearInterval(scrollInterval); // Clear any existing interval
+
+      scrollInterval = setInterval(() => {
+        if (!userInteracted) {
+          const viewer = document.getElementById('pdf-viewer');
+          const scrollPosition = parseInt(viewer.style.transform.replace('translateY(-', '').replace('px)', '')) || 0;
+          const newScrollPosition = scrollPosition + (scrollSpeed / 10); // Adjust scroll speed
+          const maxScroll = viewer.scrollHeight - window.innerHeight;
+
+          if (newScrollPosition >= maxScroll) {
+            viewer.style.transform = 'translateY(0)'; // Loop back to the top
+          } else {
+            viewer.style.transform = `translateY(-${newScrollPosition}px)`;
+          }
+
+          // Update manual scroll slider position
+          const scrollPercentage = (newScrollPosition / maxScroll) * 100;
+          manualScroll.value = scrollPercentage;
+        }
+      }, 100); // Adjust interval for smoother scrolling
+    }
+
+    function stopAutoScroll() {
+      if (scrollInterval) {
+        clearInterval(scrollInterval);
+        scrollInterval = null;
+      }
+    }
+
+    function enterFullscreen() {
+      const elem = document.documentElement;
+      if (elem.requestFullscreen && !document.fullscreenElement) {
+        elem.requestFullscreen().catch(err => {
+          console.error('Error attempting to enable fullscreen:', err);
+        });
+      }
+      isFullscreen = true;
+    }
+
+    function exitFullscreen() {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+      isFullscreen = false;
+    }
+
+    function handleUserInteraction() {
+      userInteracted = true;
+      lastUserInteractionTime = Date.now();
+      stopAutoScroll();
+
+      setTimeout(() => {
+        if (Date.now() - lastUserInteractionTime >= INACTIVITY_TIMEOUT) {
+          userInteracted = false;
+          startAutoScroll();
+        }
+      }, INACTIVITY_TIMEOUT);
+    }
+
+    // Function to hide controls
+    function hideControls() {
+      const controls = document.getElementById('controls');
+      const manualScroll = document.getElementById('manualScroll');
+      controls.classList.add('hide');
+      manualScroll.classList.add('hide');
+    }
+
+    // Function to show controls
+    function showControls() {
+      const controls = document.getElementById('controls');
+      const manualScroll = document.getElementById('manualScroll');
+      controls.classList.remove('hide');
+      manualScroll.classList.remove('hide');
+    }
+
+    // Function to reset the inactivity timer
+    function resetControlsTimeout() {
+      showControls(); // Show controls on interaction
+      clearTimeout(controlsTimeout); // Clear existing timeout
+      controlsTimeout = setTimeout(hideControls, 3000); // Hide controls after 3 seconds of inactivity
+    }
+
+    // Event listeners for user interaction
+    document.addEventListener('mousemove', resetControlsTimeout);
+    document.addEventListener('touchstart', resetControlsTimeout);
+    document.addEventListener('keydown', resetControlsTimeout);
+    document.addEventListener('click', resetControlsTimeout);
+
+    // Initialize the timeout on page load
+    resetControlsTimeout();
+
+    // Pause/Play Button
+    const pausePlayBtn = document.getElementById('pausePlayBtn');
+    pausePlayBtn.addEventListener('click', () => {
+      isAutoScrolling = !isAutoScrolling;
+      pausePlayBtn.textContent = isAutoScrolling ? 'Pause' : 'Play';
+      if (isAutoScrolling) {
+        startAutoScroll();
+      } else {
+        stopAutoScroll();
+      }
+    });
+
+    // Scroll Speed Control
+    const speedControl = document.getElementById('speedControl');
+    speedControl.addEventListener('input', () => {
+      scrollSpeed = parseFloat(speedControl.value);
+      if (isAutoScrolling) {
+        stopAutoScroll();
+        startAutoScroll();
+      }
+    });
+
+    // Manual Scroll Slider
+    const manualScroll = document.getElementById('manualScroll');
+    manualScroll.addEventListener('input', () => {
+      const viewer = document.getElementById('pdf-viewer');
+      const scrollPercentage = parseFloat(manualScroll.value);
+      const maxScroll = viewer.scrollHeight - window.innerHeight;
+      viewer.style.transform = `translateY(-${maxScroll * (scrollPercentage / 100)}px)`;
+      handleUserInteraction();
+    });
+
+    window.addEventListener('resize', () => {
+      if (pdfDoc) {
+        renderAllPages();
+      }
+    });
+
+    document.addEventListener('dblclick', () => {
+      if (isFullscreen) {
+        exitFullscreen();
+      } else {
+        enterFullscreen();
+      }
+    });
+
+    document.addEventListener('wheel', handleUserInteraction);
+    document.addEventListener('touchmove', handleUserInteraction);
+    document.addEventListener('mousedown', handleUserInteraction);
+    document.addEventListener('keydown', handleUserInteraction);
+
+    // On Android TV, show the file selector immediately
+    if (isAndroidTV()) {
+      fileSelector.classList.remove('hidden');
+    }
+  </script>
 </body>
 </html>
